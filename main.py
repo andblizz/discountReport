@@ -1,19 +1,24 @@
 import os
 import requests
 import base64
-from xml.etree import ElementTree as ET
 import xlsxwriter
 from bs4 import BeautifulSoup
 import datetime
 
 
-# headers = {'content-type': 'application/soap+xml'}
 headers = {'content-type': 'text/xml'}
 
 # Request actions
 fromDate = str(input('Введите дату отчёта в формате ГГГГ-ММ-ДД: '))
 year, month, day = map(int, fromDate.split('-'))
 toDate = str(datetime.date(year, month, day)+datetime.timedelta(1))
+try:
+    os.mkdir('Temp_files')
+except FileExistsError:
+    pass
+except:
+    print('Unable to create "Temp files" folder')
+
 body_action = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:plug="http://plugins.operday.ERPIntegration.crystals.ru/">
    <soapenv:Header/>
    <soapenv:Body>
@@ -25,26 +30,20 @@ body_action = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/so
       </plug:getLoyResultsByPeriod>
    </soapenv:Body>
 </soapenv:Envelope>"""
-
-
 response_action = requests.post(os.environ['URL'], data=body_action, headers=headers)
-purchase_base64_action = open('purchase.xml', 'wb')
-purchase_base64_action.write(response_action.content)
-purchase_base64_action.close()
+with open('Temp_files/loyResults.xml', 'wb') as f:
+    f.write(response_action.content)
 
-root_purchase = ET.parse("purchase.xml").getroot()
+with open('Temp_files/loyResults.xml', 'r') as f:
+    soup = BeautifulSoup(f, 'xml')
 
-nsmap = {'soap': 'http://schemas.xmlsoap.org/soap/envelope/'}
-purchase_base64 = open('purchase_base64.txt', 'w')
-purchase_base64.write(root_purchase.findall('.//return', nsmap)[0].text)
-purchase_base64.close()
+with open('Temp_files/purchases_action_base64.xml', 'w') as f:
+    f.write(soup.find('return').text)
 
-purchase_decode = open('purchase_decode.xml', 'wb')
-purchase_base64 = open('purchase_base64.txt', 'r')
-decoded = base64.b64decode(purchase_base64.read())
-purchase_decode.write(decoded)
-purchase_decode.close()
-purchase_base64.close()
+with open('Temp_files/purchases_action_decode.xml', 'wb') as f:
+    decoded = base64.b64decode(open('Temp_files/purchases_action_base64.xml', 'r').read())
+    f.write(decoded)
+
 
 # Request all checks
 body_all_checks = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:plug="http://plugins.operday.ERPIntegration.crystals.ru/">
@@ -58,32 +57,28 @@ body_all_checks = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.or
 </soapenv:Envelope>"""
 
 response_all_checks = requests.post(os.environ['URL'], data=body_all_checks, headers=headers)
-purchase_base64 = open('purchase_all_checks.xml', 'wb')
+purchase_base64 = open('Temp_files/purchase_all_checks.xml', 'wb')
 purchase_base64.write(response_all_checks.content)
 purchase_base64.close()
 
-root_purchase = ET.parse("purchase_all_checks.xml").getroot()
+with open('Temp_files/purchase_all_checks.xml', 'r') as f:
+    soup = BeautifulSoup(f, 'xml')
 
-nsmap = {'soap': 'http://schemas.xmlsoap.org/soap/envelope/'}
-purchase_base64 = open('purchase_all_checks_base64.txt', 'w')
-purchase_base64.write(root_purchase.findall('.//return', nsmap)[0].text)
-purchase_base64.close()
+with open('Temp_files/purchase_all_checks_base64.xml', 'w') as f:
+    f.write(soup.find('return').text)
 
-purchase_decode = open('purchase_all_checks_decode.xml', 'wb')
-purchase_base64 = open('purchase_all_checks_base64.txt', 'r')
-decoded = base64.b64decode(purchase_base64.read())
-purchase_decode.write(decoded)
-purchase_decode.close()
-purchase_base64.close()
+with open('Temp_files/purchase_all_checks_decode.xml', 'wb') as f:
+    decoded = base64.b64decode(open('Temp_files/purchase_all_checks_base64.xml', 'r').read())
+    f.write(decoded)
 
 
-with open('purchase_decode.xml') as f:
+with open('Temp_files/purchases_action_decode.xml') as f:
     soup = BeautifulSoup(f, 'xml')
 purchase = soup.find_all('purchase')
 purchases = soup.find_all('purchases')
 purchases_count = int(purchases[0]['count'])
 
-with open('purchase_all_checks_decode.xml', encoding='utf-8') as f:
+with open('Temp_files/purchase_all_checks_decode.xml', encoding='utf-8') as f:
     soup = BeautifulSoup(f, 'xml')
 purchases_all_checks = soup.find_all('purchases')
 purchases_all_checks_count = int(purchases_all_checks[0]["count"])
@@ -150,7 +145,13 @@ for element in saletimes_action:
     check_amounts.append(saletime_check_amount_dict.get(element))
 
 
-workbook = xlsxwriter.Workbook(f'{saletimes_action[0][:10]}.xlsx')
+try:
+    os.mkdir('Reports')
+except FileExistsError:
+    pass
+except:
+    print('Unable to create "Reports" folder')
+workbook = xlsxwriter.Workbook(f'Reports/{saletimes_action[0][:10]}.xlsx')
 worksheet = workbook.add_worksheet()
 
 row_card = 1
@@ -161,7 +162,6 @@ row_discountValueTotal = 1
 col = 0
 
 headings_format = workbook.add_format({'bold': True, 'border': 2})
-
 headings = ['Shop', 'Card number', 'Sale time', 'Check amount', 'Discount value total']
 worksheet.write_row('A1', headings, headings_format)
 
